@@ -56,6 +56,12 @@ function buildResponse(data: MediaRecord | Record<string, unknown>, message = 'S
   return { success: true, data, message };
 }
 
+function buildStoredFilename(mediaUuid: string, originalName: string): string {
+  const ext = path.extname(originalName);
+  const sanitizedBaseName = sanitizeFilename(path.basename(originalName, ext)) || 'media';
+  return `${mediaUuid}-${sanitizedBaseName}${ext}`;
+}
+
 router.post('/upload', upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) {
@@ -69,14 +75,15 @@ router.post('/upload', upload.single('file'), async (req, res, next) => {
 
     const checksum = await calculateChecksum(req.file.path);
     const ext = path.extname(req.file.originalname);
-    const newName = `${uuidv4()}${ext}`;
+    const mediaUuid = uuidv4();
+    const newName = buildStoredFilename(mediaUuid, req.file.originalname);
     const targetDir = getMediaSubdirectory(kind);
     const targetPath = path.join(targetDir, newName);
     await fs.rename(req.file.path, targetPath);
 
     const record: MediaRecord = {
       id: 0,
-      uuid: uuidv4(),
+      uuid: mediaUuid,
       owner_id: 'system',
       filename: newName,
       original_filename: req.file.originalname,

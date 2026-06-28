@@ -43,7 +43,7 @@ export async function findMediaFileByUuid(uuid: string): Promise<string | null> 
     for (const entry of entries) {
       if (!entry.isFile()) continue;
       const baseName = path.basename(entry.name, path.extname(entry.name));
-      if (baseName === uuid) {
+      if (baseName === uuid || baseName.startsWith(`${uuid}-`)) {
         return path.join(directory, entry.name);
       }
     }
