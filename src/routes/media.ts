@@ -4,6 +4,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/env';
 import { AppError } from '../middleware/errorHandler';
+import { authenticate } from '../middleware/auth';
 import { calculateChecksum, findMediaFileByUuid, getMediaSubdirectory, sanitizeFilename } from '../utils/filesystem';
 import logger from '../utils/logger';
 import { MediaKind, MediaRecord, UploadResponse } from '../types/media';
@@ -62,7 +63,7 @@ function buildStoredFilename(mediaUuid: string, originalName: string): string {
   return `${mediaUuid}-${sanitizedBaseName}${ext}`;
 }
 
-router.post('/upload', upload.single('file'), async (req, res, next) => {
+router.post('/upload', authenticate, upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) {
       throw new AppError(400, 'No file uploaded');
@@ -109,7 +110,7 @@ router.post('/upload', upload.single('file'), async (req, res, next) => {
 
 router.get('/media/:uuid', async (req, res, next) => {
   try {
-    const { uuid } = req.params;
+    const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
     const filePath = await findMediaFileByUuid(uuid);
 
     if (!filePath) {
@@ -152,9 +153,9 @@ router.get('/media/search', (_req, res) => {
   res.json({ success: true, data: [], message: 'Search placeholder' });
 });
 
-router.delete('/media/:uuid', async (req, res, next) => {
+router.delete('/media/:uuid', authenticate, async (req, res, next) => {
   try {
-    const { uuid } = req.params;
+    const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
     if (!uuid) {
       throw new AppError(400, 'UUID required');
     }
@@ -167,7 +168,7 @@ router.delete('/media/:uuid', async (req, res, next) => {
   }
 });
 
-router.put('/media/:uuid', async (_req, res, next) => {
+router.put('/media/:uuid', authenticate, async (_req, res, next) => {
   try {
     res.json({ success: true, data: {}, message: 'Update placeholder' });
   } catch (error) {
