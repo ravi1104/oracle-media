@@ -1,0 +1,16 @@
+[Unit]
+Description=Oracle Media Server
+After=network.target
+
+[Service]
+WorkingDirectory=/home/ubuntu/oracle-media
+ExecStart=/usr/bin/node /home/ubuntu/oracle-media/dist/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3100
+User=ubuntu
+Group=ubuntu
+
+[Install]
+WantedBy=multi-user.target
