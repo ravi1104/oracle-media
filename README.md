@@ -31,7 +31,28 @@ A production-ready Node.js + TypeScript media server for uploading, storing, and
 - `GET /health` – health status
 - `GET /version` – service version
 - `GET /metrics` – runtime metrics
+- `DELETE /api/media/:uuid` – delete media by UUID (removes file and metadata)
 
 ## Notes
 - Files are stored on disk, while metadata is prepared for Oracle DB integration.
 - For production, configure real Oracle DB credentials and TLS/Nginx settings.
+
+## Media deletion
+
+- Endpoint: `DELETE /api/media/:uuid`
+- Description: Permanently removes the media file from disk (if present) and deletes its metadata record from the database. Returns the deleted media record in the `data` field on success.
+- Example request:
+
+```bash
+curl -X DELETE "http://localhost:3000/api/media/REPLACE_WITH_UUID"
+```
+
+- Example successful response:
+
+```json
+{
+	"success": true,
+	"data": { /* deleted media record */ },
+	"message": "Media deleted successfully"
+}
+```

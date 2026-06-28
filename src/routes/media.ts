@@ -145,9 +145,16 @@ router.get('/media/search', (_req, res) => {
   res.json({ success: true, data: [], message: 'Search placeholder' });
 });
 
-router.delete('/media/:uuid', async (_req, res, next) => {
+router.delete('/media/:uuid', async (req, res, next) => {
   try {
-    res.json({ success: true, data: {}, message: 'Delete placeholder' });
+    const { uuid } = req.params;
+    if (!uuid) {
+      throw new AppError(400, 'UUID required');
+    }
+
+    const removed = await mediaService.deleteMediaByUuid(uuid);
+
+    res.json(buildResponse(removed, 'Media deleted successfully'));
   } catch (error) {
     next(error);
   }

@@ -29,11 +29,11 @@ async function bootstrap(): Promise<void> {
   app.use(requestLogger);
   app.use(apiRateLimiter);
 
-  app.use(authenticate);
-  app.use('/api', mediaRouter);
   app.use('/health', healthRouter);
   app.use('/version', versionRouter);
   app.use('/metrics', metricsRouter);
+  app.use(authenticate);
+  app.use('/api', mediaRouter);
 
   app.use(errorHandler);
 
