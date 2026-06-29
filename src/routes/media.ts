@@ -9,14 +9,8 @@ import { calculateChecksum, findMediaFileByUuid, getMediaSubdirectory, sanitizeF
 import logger from '../utils/logger';
 import { MediaKind, MediaRecord, UploadResponse } from '../types/media';
 import fs from 'fs/promises';
-import { DatabaseService } from '../services/databaseService';
-import { MediaRepository } from '../repositories/mediaRepository';
-import { MediaService } from '../services/mediaService';
 
 const router = Router();
-const databaseService = new DatabaseService();
-const mediaRepository = new MediaRepository(databaseService);
-const mediaService = new MediaService(mediaRepository);
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -30,7 +24,9 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: config.maxUploadSize },
+  limits: {
+    fileSize: config.maxUploadSize,
+  },
   fileFilter: (_req, file, cb) => {
     const kind = detectKind(file.mimetype, file.originalname);
     if (!kind) {
@@ -44,7 +40,6 @@ const upload = multer({
 function detectKind(mimeType: string, originalName: string): MediaKind | null {
   const lower = `${mimeType}`.toLowerCase();
   const ext = path.extname(originalName).toLowerCase();
-
   if (lower.startsWith('audio/')) return 'music';
   if (lower.startsWith('video/')) return 'video';
   if (lower.startsWith('image/')) return 'image';
@@ -54,7 +49,11 @@ function detectKind(mimeType: string, originalName: string): MediaKind | null {
 }
 
 function buildResponse(data: MediaRecord | Record<string, unknown>, message = 'Success'): UploadResponse {
-  return { success: true, data, message };
+  return {
+    success: true,
+    data,
+    message,
+  };
 }
 
 function buildStoredFilename(mediaUuid: string, originalName: string): string {
@@ -68,12 +67,10 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res, nex
     if (!req.file) {
       throw new AppError(400, 'No file uploaded');
     }
-
     const kind = detectKind(req.file.mimetype, req.file.originalname);
     if (!kind) {
       throw new AppError(400, 'Unsupported file type');
     }
-
     const checksum = await calculateChecksum(req.file.path);
     const ext = path.extname(req.file.originalname);
     const mediaUuid = uuidv4();
@@ -81,7 +78,6 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res, nex
     const targetDir = getMediaSubdirectory(kind);
     const targetPath = path.join(targetDir, newName);
     await fs.rename(req.file.path, targetPath);
-
     const record: MediaRecord = {
       id: 0,
       uuid: mediaUuid,
@@ -97,11 +93,8 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res, nex
       status: 'ready',
       upload_source: 'api',
     };
-
-    const persistedRecord = await mediaService.createMediaRecord(record);
-
-    logger.info('Upload completed', { kind, checksum, size: req.file.size });
-    res.json(buildResponse(persistedRecord, 'Media uploaded successfully'));
+    logger.info('Upload completed', { kind, checksum, size: req.file.size, uuid: mediaUuid });
+    res.json(buildResponse(record, 'Media uploaded successfully'));
   } catch (error) {
     logger.error('Upload failed', error);
     next(error);
@@ -112,14 +105,21 @@ router.get('/media/:uuid', async (req, res, next) => {
   try {
     const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
     const filePath = await findMediaFileByUuid(uuid);
-
     if (!filePath) {
       throw new AppError(404, 'Media not found');
     }
-
+    
+    // Extract original filename from stored filename
+    // Stored format: {uuid}-{originalName}.{ext}
+    const fileName = path.basename(filePath);
+    const originalName = fileName.substring(uuid.length + 1);
+    
     const stat = await fs.stat(filePath);
     const range = req.headers.range;
-
+    
+    // Set Content-Disposition header to use original filename
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(originalName)}"`);
+    
     if (!range) {
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Length', stat.size.toString());
@@ -128,16 +128,17 @@ router.get('/media/:uuid', async (req, res, next) => {
       stream.pipe(res);
       return;
     }
-
+    
     const parts = range.replace(/bytes=/, '').split('-');
     const start = Number(parts[0]);
     const end = parts[1] ? Number(parts[1]) : stat.size - 1;
     const chunkSize = end - start + 1;
-
+    
     res.status(206);
     res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Content-Length', chunkSize.toString());
+    
     const stream = require('fs').createReadStream(filePath, { start, end });
     stream.pipe(res);
   } catch (error) {
@@ -146,11 +147,19 @@ router.get('/media/:uuid', async (req, res, next) => {
 });
 
 router.get('/media', (_req, res) => {
-  res.json({ success: true, data: [], message: 'Media index' });
+  res.json({
+    success: true,
+    data: [],
+    message: 'Media index',
+  });
 });
 
 router.get('/media/search', (_req, res) => {
-  res.json({ success: true, data: [], message: 'Search placeholder' });
+  res.json({
+    success: true,
+    data: [],
+    message: 'Search placeholder',
+  });
 });
 
 router.delete('/media/:uuid', authenticate, async (req, res, next) => {
@@ -159,10 +168,11 @@ router.delete('/media/:uuid', authenticate, async (req, res, next) => {
     if (!uuid) {
       throw new AppError(400, 'UUID required');
     }
-
-    const removed = await mediaService.deleteMediaByUuid(uuid);
-
-    res.json(buildResponse(removed, 'Media deleted successfully'));
+    const filePath = await findMediaFileByUuid(uuid);
+    if (filePath) {
+      await fs.unlink(filePath).catch(() => undefined);
+    }
+    res.json(buildResponse({ deleted: true }, 'Media deleted successfully'));
   } catch (error) {
     next(error);
   }
@@ -170,7 +180,11 @@ router.delete('/media/:uuid', authenticate, async (req, res, next) => {
 
 router.put('/media/:uuid', authenticate, async (_req, res, next) => {
   try {
-    res.json({ success: true, data: {}, message: 'Update placeholder' });
+    res.json({
+      success: true,
+      data: {},
+      message: 'Update placeholder',
+    });
   } catch (error) {
     next(error);
   }
